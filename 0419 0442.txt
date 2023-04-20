@@ -1,0 +1,168 @@
+-27.517463179519318                                                    
+-27.454977091135945                                                    
+VMC Cycles:   5%|▍         | 485567/10000000 [01:22<26:12, 6049.14it/s]triggered
+-34.39692507258478                                                     
+-41.94207033516073                                                     
+-46.49777547362554                                                     
+-49.471805680030634                                                     
+-51.60437771578623                                                      
+-53.26980427977973                                                      
+-54.482122410944726                                                     
+-55.46535827558512                                                      
+-56.3340843314569                                                       
+-57.031050205794955                                                     
+-57.593909538465695                                                     
+-58.060429771061806                                                     
+-58.50273619940615                                                      
+-58.90510695417314                                                      
+-59.260551160989394                                                     
+-59.57413542467296                                                      
+-59.847287171888375                                                     
+-60.06897222550981                                                      
+-60.274112239855036                                                     
+-60.43978946494765                                                      
+-60.61910316247072                                                      
+-60.77607533167584                                                      
+-60.939053607591255                                                     
+-61.09279777785819                                                      
+-61.22270388917279                                                      
+-61.339328111948575                                                     
+-61.43883991247128                                                      
+-61.547638764155344                                                     
+-61.65522830836527                                                      
+-61.73780033082667                                                      
+-61.83431820952191                                                      
+-61.91115184561192                                                      
+-61.9955844286425                                                       
+-62.06734586957753                                                      
+-62.131406155029495                                                     
+-62.201874661186324                                                     
+-62.27070776039102                                                      
+-62.32860774001201                                                      
+-62.38273071394957                                                      
+-62.433678635870926                                                     
+-62.473345845079265                                                     
+-62.523016575407866                                                     
+-62.56390268650983                                                      
+-62.61596676096681                                                      
+-62.65960009480512                                                      
+-62.70287487375768                                                      
+-62.73918316412833                                                      
+VMC Cycles: 100%|██████████| 10000000/10000000 [28:19<00:00, 5883.63it/s]
+Energy: -62.781269549483696(eV), Variance: 1.747758528733108
+
+
+import numpy as np
+import sys
+from tqdm import tqdm
+
+nDimensions = 3
+charge = 2
+stepLength = 1.0
+nParticles = 2
+# step length and square inverse
+h = 0.001
+h2 = 1000000
+alpha = 1
+nCycles = 10000000
+
+def local_energy(r):
+    r_plus = np.zeros((nParticles, nDimensions))
+    r_minus = np.zeros((nParticles, nDimensions))
+    r_plus[:] = r
+    r_minus[:] = r
+    wave_function_minus = 0
+    wave_function_plus = 0
+    wave_function_current = wave_function(r)
+    
+    # Kinetic energy, brute force derivations
+    kinetic_energy = 0
+    for i in range(nParticles):
+        for j in range(nDimensions):
+            r_plus[i,j] += h
+            r_minus[i,j] -= h
+            wave_function_minus = wave_function(r_minus)
+            wave_function_plus = wave_function(r_plus)
+            kinetic_energy -= (wave_function_minus + wave_function_plus - 2 * wave_function_current)
+            r_plus[i,j] = r[i,j]
+            r_minus[i,j] = r[i,j]
+    kinetic_energy = 0.5 * h2 * kinetic_energy / wave_function_current
+    
+    # Potential energy
+    potential_energy = 0
+    r_single_particle = 0
+    for i in range(nParticles):
+        r_single_particle = 0
+        for j in range(nDimensions):
+            r_single_particle += r[i,j] * r[i,j]
+        potential_energy -= charge / np.sqrt(r_single_particle)
+    
+    # Contribution from electron-electron potential
+    r12 = 0
+    for i in range(nParticles):
+        for j in range(i + 1, nParticles):
+            r12 = 0
+            for k in range(nDimensions):
+                r12 += (r[i,k] - r[j,k]) * (r[i,k] - r[j,k])
+            potential_energy += 1 / np.sqrt(r12)
+    
+    return kinetic_energy + potential_energy
+
+
+def wave_function(r):
+    argument = 0
+    for i in range(nParticles):
+        r_single_particle = 0
+        for j in range(nDimensions):
+            r_single_particle += r[i,j] * r[i,j]
+        argument += np.sqrt(r_single_particle)
+    return np.exp(-argument * alpha)
+
+
+rOld = np.zeros((nParticles, nDimensions))
+rNew = np.zeros((nParticles, nDimensions))
+waveFunctionOld = 0
+waveFunctionNew = 0
+energySum = 0
+energySquaredSum = 0
+deltaE = 0
+prob = 1.
+# initial trial positions
+rOld = stepLength * (np.random.rand(nParticles, nDimensions) - 0.5)
+
+rNew = rOld
+# loop over Monte Carlo cycles
+accept = 0
+for cycle in tqdm(range(nCycles), file=sys.stdout, desc='VMC Cycles'):
+    prob = 1.
+    # Store the current value of the wave function
+    waveFunctionOld = wave_function(rOld)
+    # New position to test
+    for i in range(nParticles):
+        for j in range(nDimensions):
+            rNew[i,j] = rOld[i,j] + stepLength*(np.random.rand() - 0.5)
+        # Recalculate the value of the wave function
+        waveFunctionNew = wave_function(rNew)
+        # Check for step acceptance (if yes, update position, if no, reset position)
+        if np.random.rand() <= np.float_power(waveFunctionNew/waveFunctionOld, 2):
+            for j in range(nDimensions):
+                rOld[i,j] = rNew[i,j]
+            waveFunctionOld = waveFunctionNew
+            accept += 1
+        else:
+            for j in range(nDimensions):
+                rNew[i,j] = rOld[i,j]
+            
+        if wave_function(rOld) <= 1E-300:
+            print("triggered")
+            rOld = stepLength * (np.random.rand(nParticles, nDimensions) - 0.5)
+            rNew = rOld + stepLength * (np.random.rand(nParticles, nDimensions) - 0.5)
+
+        # update energies
+        deltaE = local_energy(rNew)
+        energySum += deltaE
+        energySquaredSum += deltaE*deltaE
+    if cycle % 200000 == 0: tqdm.write(str(energySum/(cycle * nParticles)*2*13.6))
+energy = energySum/(nCycles * nParticles)
+energySquared = energySquaredSum/(nCycles * nParticles)
+print(f"Energy: {energy*2*13.6}(eV), Variance: {energySquared-energy**2}")
